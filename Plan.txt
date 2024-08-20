@@ -1,0 +1,45 @@
+1st step -  represent chess board in matrix
+
+[[0 0 0 0 0 0 0 0]
+[-1 -1 -1 -1 -1 -1 -1 -1]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]               
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[1 1 1 1 1 1 1 1]
+[0 0 0 0 0 0 0 0]]
+
+e.g pawns (for every piece a matrix represenation)
+
+2nd step : represent a move
+
+2 matrixes 
+
+"from" matrix                   
+
+[[0 0 0 0 0 0 0 0]                                  
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 1 0 0 0]
+[0 0 0 0 0 0 0 0]]
+
+
+"to" matrix
+
+[[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 1 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]
+[0 0 0 0 0 0 0 0]]
+
+
+In this way, the neural net deals with the positioning of the pieces, where we make use of convolutional layers
+
+
+
