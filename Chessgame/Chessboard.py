@@ -136,37 +136,40 @@ def handle_click(pos):
 
     # Check if the click is within the actual board area, considering margins
     if MARGIN <= pos[0] < SCREEN_WIDTH - MARGIN and MARGIN <= pos[1] < SCREEN_HEIGHT - MARGIN:
-        # Convert pixel position to board coordinates (x,y), taking margin into account
+        # Convert pixel position to board coordinates (row, col), taking margin into account
         col = (pos[0] - MARGIN) // SQUARE_SIZE
         row = (pos[1] - MARGIN) // SQUARE_SIZE
 
-        # Make sure row and col are within the board's 8x8 grid, actually not necessary
-        if 0 <= col < 8 and 0 <= row < 8:
-            letter_2_num = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
-            num_2_letter = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
-            clicked_square = f'{num_2_letter[col]}{8 - row}'
+        # Mapping to get chess notation for clicked square
+        letter_2_num = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
+        num_2_letter = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
+        clicked_square = f'{num_2_letter[col]}{8 - row}'
 
-            if selected_piece is None:  # Select a piece, there should be a board[row][col] and the rest is None
-                piece = board[row][col]
-                if piece:               #the selected piece detected with the click
-                    selected_piece = piece
-                    selected_pos = (row, col)
-                    valid_moves = get_valid_moves(game_board, clicked_square) #check for valid moves
-            else:  # Move the piece to the clicked square if it's a valid move
-                target_square = f'{num_2_letter[col]}{8 - row}'
-                move_uci = None
+        # If no piece is selected, attempt to select one
+        if selected_piece is None:
+            piece = board[row][col]
+            if piece:  # A piece exists at this position
+                selected_piece = piece
+                selected_pos = (row, col)
+                valid_moves = get_valid_moves(game_board, clicked_square)  # Retrieve valid moves for the selected piece
+                print(f"Piece selected at {clicked_square}. Valid moves: {[move[-2:] for move in valid_moves]}")
+        else:  # If a piece is already selected, attempt to move it
+            target_square = f'{num_2_letter[col]}{8 - row}'
+            move_uci = None
 
-                # Look for a move in the valid_moves that matches the target
-                for move in valid_moves:
-                    if move.endswith(target_square): #if the move to the target square is valid
-                        move_uci = move
-                        break
+            # Check if the target square is in valid moves for the selected piece
+            for move in valid_moves:
+                if move.endswith(target_square):
+                    move_uci = move
+                    break
 
-                if move_uci:  # If the move is valid, proceed to move the piece
-                    move_piece(selected_pos, (row, col), clicked_square, target_square, move_uci)
-                selected_piece = None #Reset
-                selected_pos = None #Reset
-                valid_moves = [] #Reset
+            # If a valid move exists to the target square, execute the move
+            if move_uci:
+                move_piece(selected_pos, (row, col), move_uci)
+            selected_piece = None  # Deselect the piece after the move attempt
+            selected_pos = None
+            valid_moves = []  # Reset valid moves
+
 
 #function for castling 
 
@@ -189,11 +192,17 @@ def get_valid_moves(board, position):
     legal_moves = [move for move in board.legal_moves if move.from_square == square]
     return [move.uci() for move in legal_moves]
 
-def move_piece(from_pos, to_pos, from_square, to_square, move_uci):
+def move_piece(from_pos, to_pos, move_uci):
     global game_board
 
     from_row, from_col = from_pos
     to_row, to_col = to_pos
+
+    # Convert `from_pos` and `to_pos` to chess notation for debugging
+    num_2_letter = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
+    from_square = f"{num_2_letter[from_col]}{8 - from_row}"
+    to_square = f"{num_2_letter[to_col]}{8 - to_row}"
+
 
     # Update the chess library board state
     move = chess.Move.from_uci(move_uci)
@@ -203,7 +212,8 @@ def move_piece(from_pos, to_pos, from_square, to_square, move_uci):
         # Move the piece on the visual board
         board[to_row][to_col] = board[from_row][from_col]
         board[from_row][from_col] = None
-        print(f"Moved piece from {from_square} to {to_square}")
+        print(f"moved piece from {from_square} to {to_square}")
+ 
 
 # Game loop
 def game_loop():
