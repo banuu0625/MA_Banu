@@ -130,9 +130,12 @@ def draw_labels():
         # Draw on the right
         screen.blit(text, (SCREEN_WIDTH - MARGIN // 1.5, i * SQUARE_SIZE + MARGIN + SQUARE_SIZE // 2 - text.get_height() // 2)) #idk
 
+
 # Handle clicks and piece movement
-def handle_click(pos):
+def handle_click(pos,color=chess.WHITE):
     global selected_piece, selected_pos, valid_moves
+    player = 1 if color == chess.WHITE else -1
+    
 
     # Check if the click is within the actual board area, considering margins
     if MARGIN <= pos[0] < SCREEN_WIDTH - MARGIN and MARGIN <= pos[1] < SCREEN_HEIGHT - MARGIN:
@@ -148,27 +151,42 @@ def handle_click(pos):
         # If no piece is selected, attempt to select one
         if selected_piece is None:
             piece = board[row][col]
-            if piece:  # A piece exists at this position
+            if piece and piece.color == ('white' if game_board.turn else 'black'):  # Ensure correct player's turn
                 selected_piece = piece
                 selected_pos = (row, col)
                 valid_moves = get_valid_moves(game_board, clicked_square)  # Retrieve valid moves for the selected piece
                 print(f"Piece selected at {clicked_square}. Valid moves: {[move[-2:] for move in valid_moves]}")
-        else:  # If a piece is already selected, attempt to move it
-            target_square = f'{num_2_letter[col]}{8 - row}'
-            move_uci = None
+        else:
+            # Try moving the selected piece
+            target_square = clicked_square
+            if target_square in [move[-2:] for move in valid_moves]:  # Check if move is valid
+                # Make the move in game logic
+                game_move = [move for move in valid_moves if move.endswith(target_square)][0]
+                game_board.push_uci(game_move)
 
-            # Check if the target square is in valid moves for the selected piece
-            for move in valid_moves:
-                if move.endswith(target_square):
-                    move_uci = move
-                    break
+                # Update visual board representation
+                board[row][col] = selected_piece
+                selected_row, selected_col = selected_pos
+                board[selected_row][selected_col] = None
 
-            # If a valid move exists to the target square, execute the move
-            if move_uci:
-                move_piece(selected_pos, (row, col), move_uci)
-            selected_piece = None  # Deselect the piece after the move attempt
-            selected_pos = None
-            valid_moves = []  # Reset valid moves
+                # Reset selection
+                selected_piece = None
+                selected_pos = None
+                valid_moves = []
+
+                print(f"Moved piece to {target_square}. Board updated.")
+            else:
+                print("Invalid move. Select another square.")
+                # Reset selection if invalid move
+                selected_piece = None
+                selected_pos = None
+                valid_moves = []
+
+# Function to retrieve valid moves for a given position
+def get_valid_moves(chess_board, square):
+    legal_moves = list(chess_board.legal_moves)
+    return [str(move) for move in legal_moves if str(move).startswith(square)]
+
 
 
 #function for castling 

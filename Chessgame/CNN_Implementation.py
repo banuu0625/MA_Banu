@@ -50,8 +50,9 @@ def create_rep_layer(board, type):
   return np.array(board_mat)
 
 
-print(f'{board}\n')
-board_2_rep(board)
+#column index mapping - change letters into numbers and vice versa
+letter_2_num = {'a':0, 'b':1, 'c':2, 'd':3, 'e':4, 'f':5, 'g':6, 'h':7}
+num_2_letter = {0:'a', 1:'b', 2:'c', 3:'d', 4:'e', 5:'f', 6:'g', 7:'h'}
 
 #################################################################################################################################################################################
 #################################################################################################################################################################################
@@ -317,166 +318,125 @@ class ChessNet(nn.Module):
 
         return x
 
+#################################################################################################################################################################################
+#################################################################################################################################################################################
+#################################################################################################################################################################################
+#################################################################################################################################################################################
 
-
-def NN():
-    model = ChessNet(hidden_layers=4, hidden_size=200)
-    model.load_state_dict(torch.load('chess_net.pth', map_location='cpu', weights_only=True))
-    model.eval()
-
-
-
-
-
-def NN():
-    model = ChessNet(hidden_layers=4, hidden_size=200)
-    model.load_state_dict(torch.load('chess_net.pth', map_location='cpu', weights_only=True))
-    model.eval()
-
-    board_tensor = board_2_rep(game_board)
-
-    with torch.no_grad():
-        output = model(board_tensor.unsqueeze(0))
-
-    valid_move_found = False
-    attempt_count = 0
-
-    # Get a list of all valid moves from the current board state
-    legal_moves = list(game_board.legal_moves)
-
-    while not valid_move_found and attempt_count < 10:
-        from_square, to_square = interpret_nn_output(output)
-
-        if from_square is None and to_square is None:
-            print("No valid moves found in the interpretation. Retrying...")
-            attempt_count += 1
-            continue  # Retry if no valid move was found
-
-        move = chess.Move(chess.parse_square(from_square), chess.parse_square(to_square))
-
-        # Check if the move is legal
-        if move in legal_moves:
-            game_board.push(move)
-
-            # Update the visual board
-            from_row, from_col = chess.square_rank(move.from_square), chess.square_file(move.from_square)
-            to_row, to_col = chess.square_rank(move.to_square), chess.square_file(move.to_square)
-            board[to_row][to_col] = board[from_row][from_col]
-            board[from_row][from_col] = None
-
-            print(f"Neural Network moved piece from {from_square} to {to_square}")
-            valid_move_found = True
-        else:
-            print(f"Invalid move by NN: {from_square} to {to_square}, trying next best move.")
-            attempt_count += 1  # Increment attempt count
-
-    if not valid_move_found:
-        print("No valid moves found after several attempts.")
+model = ChessNet(hidden_layers=4, hidden_size=200)
+model.load_state_dict(torch.load('chess_net.pth', map_location='cpu', weights_only=True))
+model.eval()
 
 
 
 
-
-def board_2_rep(board):   #board object from chess package
-  pieces = ['p', 'r', 'n', 'b', 'q', 'k']
-  layers = []
-  for piece in pieces:
-    layers.append(create_rep_layer(board, piece)) #create feature map for each chess type
-  board_rep = np.stack(layers) #transform feature maps into 3D-tensor
-  board_rep_tensor = torch.tensor(board_rep, dtype=torch.float32)
-  return board_rep_tensor
-
-
-def interpret_nn_output(output):
-    move_probs = output.view(-1)  # Flatten output to 1D tensor
-
-    # Generate a mask for legal moves: set probability of illegal moves to -inf
-    legal_mask = torch.full_like(move_probs, -float('inf'))
-    for move in game_board.legal_moves:
-        # Calculate the index for each legal move in move_probs
-        from_square = move.from_square
-        to_square = move.to_square
-        move_index = from_square * 8 + to_square
-        legal_mask[move_index] = move_probs[move_index]
-
-    # Find the highest-probability legal move
-    max_legal_index = legal_mask.argmax()
-    from_square = max_legal_index // 8
-    to_square = max_legal_index % 8
-
-    return chess.square_name(from_square), chess.square_name(to_square)
+def check_mate_single(board):
+  board = board.copy()
+  legal_moves = list(board.legal_moves)
+  for move in legal_moves:
+    board.push_uci(str(move))
+    if board.is_checkmate():
+      move = board.pop()
+      return move
+    _ = board.pop()
 
 
+def distribution_over_moves(vals):
+  probs = np.array(vals)
+  probs = np.exp(probs)
+  probs = probs/probs.sum()
+  probs = probs ** 3
+  probs = probs /probs.sum()
+  return probs
 
-# Get valid moves using python-chess
-def get_valid_moves(board, position):
-    square = chess.parse_square(position)
-    piece = board.piece_at(square)
-    if piece is None:
-        return []  # No piece at the position
+# Predict function
+def predict(x):
+     # Set model to evaluation mode
+    with torch.no_grad():  # Disable gradient calculations for inference
+        output = model(x)
+    return output
 
-    # Get all legal moves for the piece on that square
-    legal_moves = [move for move in board.legal_moves if move.from_square == square]
-    return [move.uci() for move in legal_moves]
+def choose_move(board, model):
+    legal_moves = list(board.legal_moves)
 
-def move_piece(from_pos, to_pos, move_uci):
-    global game_board
+    # Check for immediate checkmate
+    move = check_mate_single(board)
+    if move is not None:
+        return move
 
-    from_row, from_col = from_pos
-    to_row, to_col = to_pos
+    # Prepare the input for the model
+    x = torch.Tensor(board_2_rep(board)).float().unsqueeze(0)  # Add batch dimension
+    output = model(x)  # Model prediction, should return (1, 2, 8, 8)
 
-    # Convert from_pos and to_pos to chess notation for debugging
-    num_2_letter = {0: 'a', 1: 'b', 2: 'c', 3: 'd', 4: 'e', 5: 'f', 6: 'g', 7: 'h'}
-    from_square = f"{num_2_letter[from_col]}{8 - from_row}"
-    to_square = f"{num_2_letter[to_col]}{8 - to_row}"
+    # Move output to CPU for NumPy operations
+    output = output.detach().cpu().numpy()  # Convert to NumPy array for compatibility
+    move_scores = output[0]  # Extract the prediction scores for 'from' and 'to' positions
+
+    # Split scores for 'from' and 'to' positions
+    from_scores = move_scores[0]
+    to_scores = move_scores[1]
+
+    # Distribution over moves for "from" squares
+    vals = []
+    froms = [str(move)[:2] for move in legal_moves]
+    froms = list(set(froms))
+
+    for from_ in froms:
+        rank = 8 - int(from_[1])  # Convert rank to index (0-7)
+        file = letter_2_num[from_[0]]  # Convert file (a-h) to index (0-7)
+        val = from_scores[rank, file]  # Access the score for the 'from' square
+        vals.append(val)
+
+    # Convert values to probability distribution
+    probs = distribution_over_moves(vals)
+
+    # Choose a "from" square based on probabilities
+    chosen_from = str(np.random.choice(froms, size=1, p=probs)[0])[:2]
+
+    # Scores for "to" squares for the chosen "from" square
+    to_vals = []
+    for move in legal_moves:
+        from_square = str(move)[:2]
+        if from_square == chosen_from:
+            to_square = str(move)[2:]
+            rank_to = 8 - int(to_square[1])  # Convert rank to index
+            file_to = letter_2_num[to_square[0]]  # Convert file to index
+            val = to_scores[rank_to, file_to]  # Score for 'to' square
+            to_vals.append((move, val))
+
+    # Choose the final move based on the highest score for 'to' squares
+    chosen_move = max(to_vals, key=lambda x: x[1])[0]
+    return chosen_move
 
 
-    # Update the chess library board state
-    move = chess.Move.from_uci(move_uci)
-    if move in game_board.legal_moves:
+def NN_move():
+    global game_board, board
+
+    # Get the move from the neural network
+    move = choose_move(game_board, model)
+
+    if move is not None:
+        # Push the move to python-chess's board
         game_board.push(move)
-        
-        # Move the piece on the visual board
-        board[to_row][to_col] = board[from_row][from_col]
-        board[from_row][from_col] = None
-        print(f"moved piece from {from_square} to {to_square}")
+
+        # Extract the from and to squares in chess notation
+        from_square = move.uci()[:2]  # First two characters of UCI (e.g., "e2")
+        to_square = move.uci()[2:]  # Last two characters of UCI (e.g., "e4")
+
+        # Map from chess notation to board indices
+        letter_2_num = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
+        from_col, from_row = letter_2_num[from_square[0]], 8 - int(from_square[1])
+        to_col, to_row = letter_2_num[to_square[0]], 8 - int(to_square[1])
+
+        # Update the visual board
+        board[to_row][to_col] = board[from_row][from_col]  # Move the piece to the target square
+        board[from_row][from_col] = None  # Clear the original square
+
+        print(f"NN (Black) moved from {from_square} to {to_square}")
+    else:
+        print("NN couldn't determine a valid move!")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#################################################################################################################################################################################
-#################################################################################################################################################################################
-#################################################################################################################################################################################
-#################################################################################################################################################################################
- 
 
 # Game loop
 def game_loop():
@@ -489,18 +449,15 @@ def game_loop():
                 sys.exit()
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                handle_click(pygame.mouse.get_pos())
+                handle_click(pygame.mouse.get_pos())  # White's turn (human)
+                if game_board.turn == chess.BLACK:  # If it's now Black's turn
+                    NN_move()   # Make the NN move for black
 
         # Redraw the board and pieces
         screen.fill((0, 0, 0))
         draw_labels()
         draw_board()
-        draw_pieces()
-        promoting()
-        
+
 
         # Update the screen
         pygame.display.flip()
-
-# Start the game loop
-game_loop()
