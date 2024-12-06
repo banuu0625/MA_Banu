@@ -79,6 +79,7 @@ GREEN = (36, 232, 19)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Chess Game")
 
+
 # Chess piece class to build the individual chess pieces
 class ChessPiece:
     def __init__(self, color, type, image):
@@ -356,7 +357,7 @@ def predict(x):
         output = model(x)
     return output
 
-def choose_move(board, model):
+def choose_move(board, player, color=chess.BLACK):
     legal_moves = list(board.legal_moves)
 
     # Check for immediate checkmate
@@ -365,60 +366,83 @@ def choose_move(board, model):
         return move
 
     # Prepare the input for the model
-    x = torch.Tensor(board_2_rep(board)).float().unsqueeze(0)  # Add batch dimension
-    output = model(x)  # Model prediction, should return (1, 2, 8, 8)
+    x = torch.Tensor(board_2_rep(board)).float()  # Use CPU instead
+    if color == chess.BLACK:
+        x *= -1
+    x = x.unsqueeze(0)  # Add batch dimension
+    move = predict(x)  # Model prediction, should return (1, 2, 8, 8)
 
     # Move output to CPU for NumPy operations
-    output = output.detach().cpu().numpy()  # Convert to NumPy array for compatibility
-    move_scores = output[0]  # Extract the prediction scores for 'from' and 'to' positions
+    move = move.cpu()
 
-    # Split scores for 'from' and 'to' positions
-    from_scores = move_scores[0]
-    to_scores = move_scores[1]
-
-    # Distribution over moves for "from" squares
     vals = []
-    froms = [str(move)[:2] for move in legal_moves]
+    froms = [str(legal_move)[:2] for legal_move in legal_moves]
     froms = list(set(froms))
 
     for from_ in froms:
         rank = 8 - int(from_[1])  # Convert rank to index (0-7)
         file = letter_2_num[from_[0]]  # Convert file (a-h) to index (0-7)
-        val = from_scores[rank, file]  # Access the score for the 'from' square
+
+        # Ensure indexing is correct for the "from" predictions
+        val = move[0, 0, rank, file].item()  # Convert tensor to scalar for compatibility with NumPy
         vals.append(val)
 
     # Convert values to probability distribution
     probs = distribution_over_moves(vals)
 
     # Choose a "from" square based on probabilities
-    chosen_from = str(np.random.choice(froms, size=1, p=probs)[0])[:2]
+    choosen_from = str(np.random.choice(froms, size=1, p=probs)[0])[:2]
 
-    # Scores for "to" squares for the chosen "from" square
-    to_vals = []
-    for move in legal_moves:
-        from_square = str(move)[:2]
-        if from_square == chosen_from:
-            to_square = str(move)[2:]
-            rank_to = 8 - int(to_square[1])  # Convert rank to index
-            file_to = letter_2_num[to_square[0]]  # Convert file to index
-            val = to_scores[rank_to, file_to]  # Score for 'to' square
-            to_vals.append((move, val))
+    vals = []
+    for legal_move in legal_moves:
+        from_ = str(legal_move)[:2]
+        if from_ == choosen_from:
+            to = str(legal_move)[2:]
+            rank_to = 8 - int(to[1])  # Convert rank to index
+            file_to = letter_2_num[to[0]]  # Convert file to index
 
-    # Choose the final move based on the highest score for 'to' squares
-    chosen_move = max(to_vals, key=lambda x: x[1])[0]
-    return chosen_move
+            # Ensure indexing is correct for the "to" predictions
+            val = move[0, 1, rank_to, file_to].item()  # Convert tensor to scalar for compatibility with NumPy
+            vals.append(val)
+        else:
+            vals.append(0)
 
+    # Choose the final move based on the highest value in 'to' position predictions
+    choosen_move = legal_moves[np.argmax(vals)]
+    print(choosen_move)
+    return choosen_move
+    
 
+def self_play_evaluation(board, model, color=chess.WHITE):
+    # Reset the board and play a game
+    board.reset()
+    player = 1 if color == chess.WHITE else -1
+
+    for move_num in range(100):  # Simulate up to 100 moves, or stop earlier if game ends
+        move = choose_move(board, player, color)  # Use model to choose move
+        if move is not None:
+            board.push(move)  # Make the chosen move
+        else:
+            print(f"No legal moves available. Game over after {move_num} moves.")
+            break
+
+        if board.is_game_over():
+            print(f"Game over after {move_num} moves. Result: {board.result()}")
+            break
+
+        # Switch player and color for the next move
+        player *= -1
+        color = chess.BLACK if color == chess.WHITE else chess.WHITE
+
+    return board
 def NN_move():
     global game_board, board
 
     # Get the move from the neural network
     move = choose_move(game_board, model)
-
+    
     if move is not None:
-        # Push the move to python-chess's board
-        game_board.push(move)
-
+        
         # Extract the from and to squares in chess notation
         from_square = move.uci()[:2]  # First two characters of UCI (e.g., "e2")
         to_square = move.uci()[2:]  # Last two characters of UCI (e.g., "e4")
@@ -428,10 +452,9 @@ def NN_move():
         from_col, from_row = letter_2_num[from_square[0]], 8 - int(from_square[1])
         to_col, to_row = letter_2_num[to_square[0]], 8 - int(to_square[1])
 
-        # Update the visual board
-        board[to_row][to_col] = board[from_row][from_col]  # Move the piece to the target square
-        board[from_row][from_col] = None  # Clear the original square
+        move_piece((from_col,from_row),(to_col,to_row),move.uci())
 
+    
         print(f"NN (Black) moved from {from_square} to {to_square}")
     else:
         print("NN couldn't determine a valid move!")
@@ -461,3 +484,5 @@ def game_loop():
 
         # Update the screen
         pygame.display.flip()
+
+game_loop()
