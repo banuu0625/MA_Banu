@@ -182,11 +182,6 @@ def handle_click(pos,color=chess.WHITE):
                 selected_pos = None
                 valid_moves = []
 
-# Function to retrieve valid moves for a given position
-def get_valid_moves(chess_board, square):
-    legal_moves = list(chess_board.legal_moves)
-    return [str(move) for move in legal_moves if str(move).startswith(square)]
-
 
 
 #function for castling 
